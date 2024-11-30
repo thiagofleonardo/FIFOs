@@ -10,20 +10,20 @@
 
 K_FIFO_DEFINE(my_fifo);
 
-void escrita1(void)
+struct data_item_t {
+    void* fifo_reserved; /* 1st word reserved for use by fifo */
+    uint32_t value;
+};
+
+struct data_item_t tx_data;
+struct data_item_t *rx1_data;
+struct data_item_t *rx2_data;
+
+void escrita(void)
 {
-    while(1){
-        if (k_fifo_num_used_get(&my_fifo) > 10)
-        {
-            k_sleep(K_SECONDS(1));
-            continue;
-        }
-        char *data1 = k_malloc(7);  // Allocate 7 bytes for "Tarde!" + null terminator
-        __ASSERT(data1 != NULL, "k_malloc failed");
-
-        strcpy(data1, "Tarde!");
-        k_fifo_put(&my_fifo, data1);
-
+    while (1) {
+        tx_data.value = 45;
+        k_fifo_put(&my_fifo, &tx_data);
         k_sleep(K_SECONDS(1));
     }
 }
@@ -31,10 +31,9 @@ void escrita1(void)
 void leitura1(void)
 {
     while (1) {
-        char *data2 = k_fifo_get(&my_fifo, K_FOREVER);
-        if (data2) {
-            printk("Received: %s\n", data2);
-            k_free(data2);  // Free the memory after use
+        rx1_data = k_fifo_get(&my_fifo, K_FOREVER);
+        if (rx1_data != NULL) {
+            printk("Valor lido %d\n", rx1_data->value);
         }
         k_sleep(K_SECONDS(1));
     }
@@ -43,15 +42,14 @@ void leitura1(void)
 void leitura2(void)
 {
     while (1) {
-        char *data3 = k_fifo_get(&my_fifo, K_FOREVER);
-        if (data3) {
-            printk("Received: %s\n", data3);
-            k_free(data3);  // Free the memory after use
+        rx2_data = k_fifo_get(&my_fifo, K_FOREVER);
+        if (rx2_data != NULL) {
+            printk("Valor lido %d\n", rx2_data->value);
         }
         k_sleep(K_SECONDS(1));
     }
 }
 
-K_THREAD_DEFINE(thread1_id, STACKSIZE, escrita1, NULL, NULL, NULL, PRIORITY, 0, K_NO_WAIT);
+K_THREAD_DEFINE(thread1_id, STACKSIZE, escrita, NULL, NULL, NULL, PRIORITY, 0, K_NO_WAIT);
 K_THREAD_DEFINE(thread2_id, STACKSIZE, leitura1, NULL, NULL, NULL, PRIORITY, 0, K_NO_WAIT);
 K_THREAD_DEFINE(thread3_id, STACKSIZE, leitura2, NULL, NULL, NULL, PRIORITY, 0, K_NO_WAIT);

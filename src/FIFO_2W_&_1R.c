@@ -3,45 +3,55 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/sys/__assert.h>
+#include <zephyr/sys/mutex.h>
 #include <string.h>
 
 #define STACKSIZE 1024
 #define PRIORITY 7
 
 K_FIFO_DEFINE(my_fifo);
+K_MUTEX_DEFINE(my_mutex); //mutex para controlar o acesso a variável cont
+
+struct data_item_t {
+    void* fifo_reserved; /* 1st word reserved for use by fifo */
+    uint32_t value;
+};
+
+struct data_item_t tx1_data;
+struct data_item_t tx2_data;
+struct data_item_t *rx_data;
+int cont = 0; //contador de elementos na fila, para evitar o esgotamento da memória
 
 void escrita1(void)
 {
-    while(1){
-        if (k_fifo_num_used_get(&my_fifo) > 10)
-        {
+    while (1) {
+        tx1_data.value = 45;
+        k_mutex_lock(&my_mutex, K_FOREVER);
+        if (cont > 25) {
+            k_mutex_unlock(&my_mutex);
             k_sleep(K_SECONDS(1));
             continue;
         }
-        char *data1 = k_malloc(7);  // Allocate 7 bytes for "Tarde!" + null terminator
-        __ASSERT(data1 != NULL, "k_malloc failed");
-
-        strcpy(data1, "Tarde!");
-        k_fifo_put(&my_fifo, data1);
-
+        k_fifo_put(&my_fifo, &tx1_data);
+        cont++;
+        k_mutex_unlock(&my_mutex);
         k_sleep(K_SECONDS(1));
     }
 }
 
 void escrita2(void)
 {
-    while(1){
-        if (k_fifo_num_used_get(&my_fifo) > 10)
-        {
+    while (1) {
+        tx2_data.value = 24;
+        k_mutex_lock(&my_mutex, K_FOREVER);
+        if (cont > 25) {
+            k_mutex_unlock(&my_mutex);
             k_sleep(K_SECONDS(1));
             continue;
         }
-        char *data2 = k_malloc(7);  // Allocate 7 bytes for "Noite!" + null terminator
-        __ASSERT(data2 != NULL, "k_malloc failed");
-
-        strcpy(data2, "Noite!");
-        k_fifo_put(&my_fifo, data2);
-
+        k_fifo_put(&my_fifo, &tx2_data);
+        cont++;
+        k_mutex_unlock(&my_mutex);
         k_sleep(K_SECONDS(1));
     }
 }
@@ -49,10 +59,12 @@ void escrita2(void)
 void leitura(void)
 {
     while (1) {
-        char *data3 = k_fifo_get(&my_fifo, K_FOREVER);
-        if (data3) {
-            printk("Received: %s\n", data3);
-            k_free(data3);  // Free the memory after use
+        rx_data = k_fifo_get(&my_fifo, K_FOREVER);
+        if (rx_data != NULL) {
+            k_mutex_lock(&my_mutex, K_FOREVER);
+            cont--;
+            k_mutex_unlock(&my_mutex);
+            printk("Valor lido %d\n", rx_data->value);
         }
         k_sleep(K_SECONDS(1));
     }
